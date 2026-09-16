@@ -1,0 +1,3 @@
+node_modules/
+dist/
+.sync-hub.local.json
