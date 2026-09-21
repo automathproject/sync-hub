@@ -75,11 +75,21 @@
   let repositories = {};
   let busy = '';
   let previews = {};
+  let previewStatus = {};
   let result = null;
   let error = '';
   let outputElement;
   let activeSource;
   let releaseVersion = null;
+
+  function previewBadge(id) {
+    if (busy === `${id}:preview`) return { label: 'Vérification…', class: 'pending' };
+    const status = previewStatus[id];
+    if (!status) return null;
+    if (!status.canApply) return { label: 'Échec', class: 'failure' };
+    if (status.expectedChanges) return { label: 'Changements détectés', class: 'changes' };
+    return { label: 'Vérifié', class: 'ok' };
+  }
 
   async function api(url, options = {}) {
     const response = await fetch(url, {
@@ -197,10 +207,18 @@
       const data = await api(`/api/flows/${flow.id}/preview`, { method: 'POST', body: '{}' });
       watchRun(data.runId, `Aperçu · ${flow.title}`, busy, completed => {
         previews = { ...previews, [flow.id]: completed.previewId };
+        previewStatus = {
+          ...previewStatus,
+          [flow.id]: {
+            canApply: completed.canApply,
+            expectedChanges: completed.canApply && completed.code === 1
+          }
+        };
       }, true);
     } catch (cause) {
       error = cause.message;
       busy = '';
+      previewStatus = { ...previewStatus, [flow.id]: { canApply: false } };
     }
   }
 
@@ -216,6 +234,7 @@
         body: JSON.stringify({ previewId })
       });
       previews = { ...previews, [flow.id]: null };
+      previewStatus = { ...previewStatus, [flow.id]: null };
       watchRun(data.runId, `Synchronisation · ${flow.title}`, busy);
     } catch (cause) {
       error = cause.message;
@@ -293,12 +312,16 @@
           <div class="direction-list">
             {#each flow.directions as direction}
               {@const hasPreview = Boolean(previews[direction.id])}
+              {@const badge = previewBadge(direction.id)}
               <div class="direction-control">
                 <strong>{direction.title}</strong>
                 <div class="actions">
                   <button onclick={() => preview(direction)} disabled={Boolean(busy)}>
                     {busy === `${direction.id}:preview` ? 'Vérification…' : direction.previewLabel}
                   </button>
+                  {#if badge}
+                    <span class="preview-badge {badge.class}">{badge.label}</span>
+                  {/if}
                   <button class="apply" onclick={() => apply(direction)} disabled={Boolean(busy) || !hasPreview}>
                     {busy === `${direction.id}:apply` ? 'Synchronisation…' : direction.applyLabel}
                   </button>
@@ -309,10 +332,14 @@
           </div>
         {:else}
           {@const hasPreview = Boolean(previews[flow.id])}
+          {@const badge = previewBadge(flow.id)}
           <div class="actions">
             <button onclick={() => preview(flow)} disabled={Boolean(busy)}>
               {busy === `${flow.id}:preview` ? 'Vérification…' : (flow.previewLabel || 'Vérifier')}
             </button>
+            {#if badge}
+              <span class="preview-badge {badge.class}">{badge.label}</span>
+            {/if}
             <button class="apply" onclick={() => apply(flow)} disabled={Boolean(busy) || !hasPreview}>
               {busy === `${flow.id}:apply` ? 'Application…' : (flow.applyLabel || 'Appliquer')}
             </button>
@@ -341,6 +368,7 @@
       </article>
       {#each preparations as flow}
         {@const hasPreview = Boolean(previews[flow.id])}
+        {@const badge = previewBadge(flow.id)}
         <article class:danger={flow.danger} class="preparation-card">
           <h3>{flow.id === 'metadata' ? '2 · ' : '3 · '}{flow.title}</h3>
           <p>{flow.detail}</p>
@@ -356,6 +384,9 @@
             <button onclick={() => preview(flow)} disabled={Boolean(busy)}>
               {busy === `${flow.id}:preview` ? 'Analyse…' : flow.previewLabel}
             </button>
+            {#if badge}
+              <span class="preview-badge {badge.class}">{badge.label}</span>
+            {/if}
             <button class:danger={flow.danger} class="apply" onclick={() => apply(flow)} disabled={Boolean(busy) || !hasPreview}>
               {busy === `${flow.id}:apply` ? 'Action en cours…' : flow.applyLabel}
             </button>

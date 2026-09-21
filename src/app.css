@@ -55,7 +55,12 @@ small { color: #68778a; }
 .snapshot-card h3 { margin: 0; font-size: 1.06rem; letter-spacing: -.018em; }
 .preparation-card p { margin: 9px 0 22px; font-size: .94rem; }
 .snapshot-card p { margin: 9px 0 22px; font-size: .94rem; }
-.actions { display: flex; gap: 9px; margin-top: auto; margin-bottom: 12px; }
+.actions { display: flex; align-items: center; gap: 9px; margin-top: auto; margin-bottom: 12px; }
+.preview-badge { padding: 4px 9px; border-radius: 999px; font-size: .74rem; font-weight: 680; white-space: nowrap; }
+.preview-badge.pending { background: #e7e5fc; color: #4f46e5; }
+.preview-badge.ok { background: #e1f3ea; color: #08714f; }
+.preview-badge.changes { background: #fbe9d2; color: #a45a13; }
+.preview-badge.failure { background: #fde3dd; color: #a4351c; }
 button { border: 0; border-radius: 9px; padding: 10px 14px; background: #4f46e5; color: #fff; font-weight: 700; }
 button:hover:not(:disabled) { background: #4038c6; }
 button.apply { background: #0e8762; }
