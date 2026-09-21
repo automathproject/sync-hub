@@ -71,7 +71,7 @@ function sendRunEvent(run, event, payload) {
   for (const listener of run.listeners) listener(event, payload);
 }
 
-function startRun(command, args, cwd, onComplete = () => ({})) {
+function startRun(command, args, cwd, onComplete = () => ({}), extraEnv = {}) {
   const run = {
     id: randomUUID(),
     output: '',
@@ -82,7 +82,7 @@ function startRun(command, args, cwd, onComplete = () => ({})) {
   };
   runs.set(run.id, run);
 
-  const child = spawn(command, args, { cwd, shell: false, env: process.env });
+  const child = spawn(command, args, { cwd, shell: false, env: { ...process.env, ...extraEnv } });
   let killedForSize = false;
   const append = chunk => {
     if (run.done || Buffer.byteLength(run.output) >= MAX_OUTPUT_BYTES) return;
@@ -123,19 +123,29 @@ function flowCommands(repositories) {
       title: 'Exercices → exobase',
       previewCodes: [0, 1],
       preview: [process.execPath, ['scripts/sync-exercices.mjs', '--check'], repositories.exobase],
-      apply: [process.execPath, ['scripts/sync-exercices.mjs', '--apply'], repositories.exobase]
+      apply: [process.execPath, ['scripts/sync-exercices.mjs', '--apply'], repositories.exobase],
+      env: { EXERCISES_ROOT: repositories.exercises }
+    },
+    'exobase-to-exercises': {
+      title: 'exobase → Exercices (AMSCC)',
+      previewCodes: [0, 1],
+      preview: [process.execPath, ['scripts/sync-exercices.mjs', '--push', '--check'], repositories.exobase],
+      apply: [process.execPath, ['scripts/sync-exercices.mjs', '--push', '--apply'], repositories.exobase],
+      env: { EXERCISES_ROOT: repositories.exercises }
     },
     'openyourmath-to-exobase': {
       title: 'OpenYourMath → exobase',
       previewCodes: [0, 1],
       preview: ['pnpm', ['sync:exobase:push', '--check'], repositories.openyourmath],
-      apply: ['pnpm', ['sync:exobase:push', '--apply'], repositories.openyourmath]
+      apply: ['pnpm', ['sync:exobase:push', '--apply'], repositories.openyourmath],
+      env: { EXOBASE_ROOT: repositories.exobase }
     },
     'exobase-to-openyourmath': {
       title: 'exobase → OpenYourMath',
       previewCodes: [0, 1],
       preview: ['pnpm', ['sync:exobase:check'], repositories.openyourmath],
-      apply: ['pnpm', ['sync:exobase', '--apply'], repositories.openyourmath]
+      apply: ['pnpm', ['sync:exobase', '--apply'], repositories.openyourmath],
+      env: { EXOBASE_ROOT: repositories.exobase }
     },
     'metadata': {
       title: 'Métadonnées des exercices',
@@ -152,11 +162,38 @@ function flowCommands(repositories) {
   };
 }
 
-async function gitState(directory) {
+async function remoteState(directory, refresh) {
+  const origin = await run('git', ['remote', 'get-url', 'origin'], directory);
+  if (origin.code !== 0) return { state: 'no-origin' };
+
+  let fetchError = null;
+  if (refresh) {
+    const fetched = await run('git', ['fetch', '--quiet', 'origin'], directory);
+    if (fetched.code !== 0) fetchError = fetched.output;
+  }
+
+  const upstream = await run('git', ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}'], directory);
+  if (upstream.code !== 0) return { state: 'no-upstream', fetchError };
+
+  const count = await run('git', ['rev-list', '--left-right', '--count', 'HEAD...@{upstream}'], directory);
+  if (count.code !== 0) return { state: 'unknown', upstream: upstream.output, fetchError };
+  // git rev-list HEAD...@{upstream} retourne d'abord les commits propres à
+  // HEAD (à publier), puis ceux propres au distant (à récupérer).
+  const [ahead = 0, behind = 0] = count.output.trim().split(/\s+/).map(Number);
+  const state = ahead === 0 && behind === 0
+    ? 'up-to-date'
+    : ahead > 0 && behind > 0
+      ? 'diverged'
+      : ahead > 0 ? 'ahead' : 'behind';
+  return { state, upstream: upstream.output, ahead, behind, fetchError };
+}
+
+async function gitState(directory, refreshRemote = false) {
   const [head, status] = await Promise.all([
     run('git', ['rev-parse', '--short', 'HEAD'], directory),
     run('git', ['status', '--porcelain'], directory)
   ]);
+  const remote = await remoteState(directory, refreshRemote);
   const changes = status.output === '(Aucune sortie.)'
     ? 0
     : status.output.split('\n').filter(Boolean).length;
@@ -165,7 +202,8 @@ async function gitState(directory) {
     commit: head.code === 0 ? head.output.trim() : 'inconnu',
     clean: status.code === 0 && changes === 0,
     changes,
-    status: status.code === 0 && changes > 0 ? status.output : ''
+    status: status.code === 0 && changes > 0 ? status.output : '',
+    remote
   };
 }
 
@@ -190,10 +228,11 @@ function cleanupPreviews() {
 
 const app = Fastify({ logger: false });
 
-app.get('/api/status', async () => {
+app.get('/api/status', async request => {
   const repositories = await loadRepositories();
+  const refreshRemote = request.query?.remote === '1';
   const states = await Promise.all(Object.entries(repositories).map(async ([key, directory]) => {
-    const state = await gitState(directory);
+    const state = await gitState(directory, refreshRemote);
     return [key, state];
   }));
   return Object.fromEntries(states);
@@ -261,7 +300,7 @@ app.post('/api/flows/:id/preview', async (request, reply) => {
     const previewId = canApply ? randomUUID() : null;
     if (previewId) previews.set(previewId, { flow: request.params.id, expiresAt: Date.now() + PREVIEW_TTL_MS });
     return { previewId, canApply, expiresInSeconds: canApply ? PREVIEW_TTL_MS / 1000 : 0 };
-  });
+  }, flow.env);
   return { runId: run.id };
 });
 
@@ -276,7 +315,7 @@ app.post('/api/flows/:id/apply', async (request, reply) => {
   }
   previews.delete(request.body.previewId);
   const [command, args, cwd] = flow.apply;
-  const run = startRun(command, args, cwd);
+  const run = startRun(command, args, cwd, undefined, flow.env);
   return { runId: run.id };
 });
 

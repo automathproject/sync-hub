@@ -3,9 +3,24 @@
 
   const flows = [
     {
-      id: 'exercises-to-exobase',
-      title: 'Exercices → exobase',
-      detail: 'Importe les sources AMSCC, images et scripts Python vers la base partagée.'
+      title: 'Exercices ↔ exobase',
+      detail: 'Synchronise le corpus AMSCC dans le sens choisi. Chaque sens est vérifié séparément avant toute écriture.',
+      directions: [
+        {
+          id: 'exercises-to-exobase',
+          title: 'Exercices → exobase',
+          previewLabel: 'Vérifier',
+          applyLabel: 'Vers exobase',
+          confirmation: 'Synchroniser les changements AMSCC vérifiés d’Exercices vers exobase ?'
+        },
+        {
+          id: 'exobase-to-exercises',
+          title: 'exobase → Exercices',
+          previewLabel: 'Vérifier',
+          applyLabel: 'Vers Exercices',
+          confirmation: 'Remonter les corrections AMSCC vérifiées d’exobase vers Exercices ?\n\nLes fichiers concernés seront ensuite à relire et à committer dans Exercices.'
+        }
+      ]
     },
     {
       id: 'openyourmath-to-exobase',
@@ -58,9 +73,21 @@
     return data;
   }
 
-  async function refreshStatus() {
+  function remoteLabel(repository) {
+    const remote = repository?.remote;
+    if (!remote || remote.state === 'no-origin') return 'Aucun dépôt distant';
+    if (remote.fetchError) return 'Distant non actualisé';
+    if (remote.state === 'no-upstream') return 'Branche sans suivi distant';
+    if (remote.state === 'up-to-date') return 'À jour avec le distant';
+    if (remote.state === 'ahead') return `${remote.ahead} commit(s) à envoyer`;
+    if (remote.state === 'behind') return `${remote.behind} commit(s) à récupérer`;
+    if (remote.state === 'diverged') return `${remote.ahead} à envoyer · ${remote.behind} à récupérer`;
+    return 'État distant inconnu';
+  }
+
+  async function refreshStatus(refreshRemote = false) {
     try {
-      repositories = await api('/api/status');
+      repositories = await api(`/api/status${refreshRemote ? '?remote=1' : ''}`);
     } catch (cause) {
       error = cause.message;
     }
@@ -102,7 +129,7 @@
     outputElement?.scrollTo({ top: outputElement.scrollHeight, behavior: 'smooth' });
   }
 
-  function watchRun(runId, title, busyKey, onComplete = () => {}) {
+  function watchRun(runId, title, busyKey, onComplete = () => {}, isPreview = false) {
     activeSource?.close();
     result = { title, output: 'Démarrage de la commande…\n', code: null, running: true };
     const source = new EventSource(`/api/runs/${runId}/events`);
@@ -117,7 +144,8 @@
       const data = JSON.parse(event.data);
       source.close();
       if (activeSource === source) activeSource = null;
-      result = { ...result, code: data.code, running: false };
+      const expectedChanges = isPreview && data.canApply && data.code === 1;
+      result = { ...result, code: data.code, running: false, expectedChanges };
       busy = '';
       onComplete(data);
       refreshStatus();
@@ -138,7 +166,7 @@
       const data = await api(`/api/flows/${flow.id}/preview`, { method: 'POST', body: '{}' });
       watchRun(data.runId, `Aperçu · ${flow.title}`, busy, completed => {
         previews = { ...previews, [flow.id]: completed.previewId };
-      });
+      }, true);
     } catch (cause) {
       error = cause.message;
       busy = '';
@@ -178,7 +206,7 @@
   }
 
   onMount(() => {
-    refreshStatus();
+    refreshStatus(true);
     refreshReleaseVersion();
   });
 </script>
@@ -195,7 +223,7 @@
         <h1>Synchronisations</h1>
         <p>Vérifiez d’abord, appliquez ensuite, puis relisez le diff Git.</p>
       </div>
-      <button class="secondary" onclick={refreshStatus} disabled={busy}>Actualiser l’état</button>
+      <button class="secondary" onclick={() => refreshStatus(true)} disabled={busy}>Actualiser les dépôts</button>
     </div>
   </header>
 
@@ -211,6 +239,7 @@
         {#if repository}
           <strong>{repository.clean ? 'Propre' : `${repository.changes} modification(s)`}</strong>
           <small>commit {repository.commit}</small>
+          <small class:remote-warning={repository.remote?.state !== 'up-to-date'} class="remote-status">{remoteLabel(repository)}</small>
           {#if !repository.clean && repository.status}
             <details>
               <summary>Voir les fichiers concernés</summary>
@@ -226,19 +255,39 @@
 
   <section class="flows" aria-label="Flux de synchronisation">
     {#each flows as flow}
-      {@const hasPreview = Boolean(previews[flow.id])}
       <article class="flow-card">
         <h2>{flow.title}</h2>
         <p>{flow.detail}</p>
-        <div class="actions">
-          <button onclick={() => preview(flow)} disabled={Boolean(busy)}>
-            {busy === `${flow.id}:preview` ? 'Vérification…' : (flow.previewLabel || 'Vérifier')}
-          </button>
-          <button class="apply" onclick={() => apply(flow)} disabled={Boolean(busy) || !hasPreview}>
-            {busy === `${flow.id}:apply` ? 'Application…' : (flow.applyLabel || 'Appliquer')}
-          </button>
-        </div>
-        <small>{hasPreview ? 'Aperçu récent disponible pendant 10 minutes.' : 'Un aperçu récent est requis.'}</small>
+        {#if flow.directions}
+          <div class="direction-list">
+            {#each flow.directions as direction}
+              {@const hasPreview = Boolean(previews[direction.id])}
+              <div class="direction-control">
+                <strong>{direction.title}</strong>
+                <div class="actions">
+                  <button onclick={() => preview(direction)} disabled={Boolean(busy)}>
+                    {busy === `${direction.id}:preview` ? 'Vérification…' : direction.previewLabel}
+                  </button>
+                  <button class="apply" onclick={() => apply(direction)} disabled={Boolean(busy) || !hasPreview}>
+                    {busy === `${direction.id}:apply` ? 'Synchronisation…' : direction.applyLabel}
+                  </button>
+                </div>
+                <small>{hasPreview ? 'Aperçu disponible pendant 10 minutes.' : 'Un aperçu est requis.'}</small>
+              </div>
+            {/each}
+          </div>
+        {:else}
+          {@const hasPreview = Boolean(previews[flow.id])}
+          <div class="actions">
+            <button onclick={() => preview(flow)} disabled={Boolean(busy)}>
+              {busy === `${flow.id}:preview` ? 'Vérification…' : (flow.previewLabel || 'Vérifier')}
+            </button>
+            <button class="apply" onclick={() => apply(flow)} disabled={Boolean(busy) || !hasPreview}>
+              {busy === `${flow.id}:apply` ? 'Application…' : (flow.applyLabel || 'Appliquer')}
+            </button>
+          </div>
+          <small>{hasPreview ? 'Aperçu récent disponible pendant 10 minutes.' : 'Un aperçu récent est requis.'}</small>
+        {/if}
       </article>
     {/each}
   </section>
@@ -296,6 +345,8 @@
         <h2>{result.title}</h2>
         {#if result.running}
           <span class="code running">en cours</span>
+        {:else if result.expectedChanges}
+          <span class="code changes">changements détectés</span>
         {:else}
           <span class:failure={result.code !== 0} class="code">code {result.code}</span>
         {/if}

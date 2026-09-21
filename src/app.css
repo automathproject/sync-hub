@@ -26,6 +26,8 @@ header p:not(.eyebrow) { margin: 9px 0 0; }
 .repository.dirty { border-left-color: #e59d24; }
 .repository span { color: #697789; font-size: .86rem; font-weight: 650; }
 .repository strong { font-size: 1rem; }
+.remote-status { color: #08714f; font-weight: 650; }
+.remote-status.remote-warning { color: #a45a13; }
 .repository details { margin-top: 4px; }
 .repository summary { color: #4f46e5; cursor: pointer; font-size: .79rem; font-weight: 680; }
 .status-output { max-height: 180px; margin: 9px 0 0; padding: 9px; border-radius: 7px; background: #f3f6fa; color: #3a475a; font-size: .72rem; line-height: 1.45; }
@@ -34,6 +36,11 @@ small { color: #68778a; }
 .flows { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .flow-card { padding: 22px; display: flex; min-height: 220px; flex-direction: column; }
 .flow-card p { margin: 9px 0 22px; font-size: .94rem; }
+.direction-list { display: grid; gap: 10px; margin-top: auto; }
+.direction-control { padding: 12px; border: 1px solid #e1e8f2; border-radius: 11px; background: #f8faff; }
+.direction-control strong { display: block; color: #334155; font-size: .86rem; }
+.direction-control .actions { margin-top: 10px; margin-bottom: 6px; }
+.direction-control small { display: block; font-size: .74rem; }
 .preparation { margin-top: 30px; }
 .section-heading { margin-bottom: 14px; }
 .section-heading .eyebrow { margin-bottom: 4px; }

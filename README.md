@@ -25,10 +25,12 @@ Puis ouvrir <http://127.0.0.1:4317>.
 
 ## Principes de sécurité
 
-- l'interface ne peut lancer que six actions connues : les trois
-  synchronisations, la reconstruction du contenu, l'indexation des métadonnées
-  et la publication de release ;
+- l'interface ne peut lancer que sept actions connues : les quatre
+  synchronisations entre dépôts, la reconstruction du contenu, l'indexation
+  des métadonnées et la publication de release ;
 - un dépôt non propre affiche le détail compact de son `git status` ;
+- l'actualisation des dépôts consulte `origin` et indique les commits à envoyer
+  ou à récupérer ;
 - chaque synchronisation exige un aperçu de moins de dix minutes avant son
   application ;
 - aucune commande arbitraire, aucun commit et aucun déploiement ne sont
@@ -60,4 +62,10 @@ Automath/
 
 Pour utiliser d'autres emplacements, copier
 `.sync-hub.local.example.json` vers `.sync-hub.local.json` puis ajuster les
-chemins. Ce fichier reste local et est ignoré par Git.
+chemins. Ils sont relatifs au dossier `sync-hub`, mais peuvent aussi être
+absolus. Ce fichier reste local et est ignoré par Git. Sync Hub transmet ces
+emplacements aux scripts de synchronisation : les trois dépôts n'ont donc pas
+besoin d'être voisins.
+
+Le guide versionné [CONFIGURATION-LOCALE.md](CONFIGURATION-LOCALE.md) contient
+un modèle prêt à transmettre à une IA pour configurer une autre machine.
