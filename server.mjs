@@ -266,6 +266,18 @@ app.post('/api/release/bump-patch', async (_request, reply) => {
   return { previous: version.current, current: version.next, next: nextPatchVersion(version.next) };
 });
 
+app.post('/api/db-snapshot/publish', async () => {
+  const repositories = await loadRepositories();
+  const run = startRun('pnpm', ['db:snapshot:publish'], repositories.openyourmath);
+  return { runId: run.id };
+});
+
+app.post('/api/db-snapshot/update', async () => {
+  const repositories = await loadRepositories();
+  const run = startRun('pnpm', ['db:snapshot:update'], repositories.openyourmath);
+  return { runId: run.id };
+});
+
 app.get('/api/runs/:id/events', (request, reply) => {
   const run = runs.get(request.params.id);
   if (!run) return reply.code(404).send({ error: 'Exécution introuvable ou expirée.' });

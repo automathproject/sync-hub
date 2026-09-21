@@ -25,9 +25,10 @@ Puis ouvrir <http://127.0.0.1:4317>.
 
 ## Principes de sécurité
 
-- l'interface ne peut lancer que sept actions connues : les quatre
+- l'interface ne peut lancer que neuf actions connues : les quatre
   synchronisations entre dépôts, la reconstruction du contenu, l'indexation
-  des métadonnées et la publication de release ;
+  des métadonnées, la publication de release et le transfert de la sauvegarde
+  locale des embeddings ;
 - un dépôt non propre affiche le détail compact de son `git status` ;
 - l'actualisation des dépôts consulte `origin` et indique les commits à envoyer
   ou à récupérer ;

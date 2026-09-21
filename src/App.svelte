@@ -54,6 +54,24 @@
     }
   ];
 
+  const snapshots = [
+    {
+      id: 'publish',
+      title: 'Publier la sauvegarde',
+      detail: 'Envoie la base SQLite locale, y compris les embeddings non versionnés, vers la release GitHub db-snapshot-dev.',
+      actionLabel: 'Publier la sauvegarde',
+      confirmation: 'Publier la sauvegarde locale des embeddings ?\n\nLa release GitHub db-snapshot-dev sera créée ou mise à jour. Cette action requiert gh connecté.'
+    },
+    {
+      id: 'update',
+      title: 'Récupérer et restaurer',
+      detail: 'Télécharge la dernière sauvegarde puis remplace la base locale et reconstruit le cache d’embeddings.',
+      actionLabel: 'Mettre à jour cette machine',
+      danger: true,
+      confirmation: 'Télécharger puis restaurer la sauvegarde des embeddings ?\n\nLa base locale data/exercises.sqlite sera remplacée. Faites d’abord git pull pour aligner les métadonnées versionnées.'
+    }
+  ];
+
   let repositories = {};
   let busy = '';
   let previews = {};
@@ -119,6 +137,19 @@
     } catch (cause) {
       error = cause.message;
     } finally {
+      busy = '';
+    }
+  }
+
+  async function runSnapshot(snapshot) {
+    if (!window.confirm(snapshot.confirmation)) return;
+    busy = `snapshot:${snapshot.id}`;
+    error = '';
+    try {
+      const data = await api(`/api/db-snapshot/${snapshot.id}`, { method: 'POST', body: '{}' });
+      watchRun(data.runId, `Sauvegarde d’embeddings · ${snapshot.title}`, busy);
+    } catch (cause) {
+      error = cause.message;
       busy = '';
     }
   }
@@ -330,6 +361,27 @@
             </button>
           </div>
           <small>{hasPreview ? 'Aperçu récent disponible pendant 10 minutes.' : 'Un aperçu récent est requis.'}</small>
+        </article>
+      {/each}
+    </div>
+  </section>
+
+  <section class="snapshots" aria-label="Transfert des embeddings">
+    <div class="section-heading">
+      <p class="eyebrow">Embeddings</p>
+      <h2>Transférer la base locale entre machines</h2>
+    </div>
+    <div class="snapshot-cards">
+      {#each snapshots as snapshot}
+        <article class:danger={snapshot.danger} class="snapshot-card">
+          <h3>{snapshot.title}</h3>
+          <p>{snapshot.detail}</p>
+          <div class="actions">
+            <button class:danger={snapshot.danger} class="apply" onclick={() => runSnapshot(snapshot)} disabled={Boolean(busy)}>
+              {busy === `snapshot:${snapshot.id}` ? 'Action en cours…' : snapshot.actionLabel}
+            </button>
+          </div>
+          <small>{snapshot.id === 'publish' ? 'Les métadonnées textuelles restent à committer séparément.' : 'La sauvegarde ne remplace pas git pull pour les métadonnées.'}</small>
         </article>
       {/each}
     </div>
