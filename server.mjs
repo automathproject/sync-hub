@@ -228,6 +228,21 @@ function cleanupPreviews() {
 
 const app = Fastify({ logger: false });
 
+const ALLOWED_ORIGINS = new Set([
+  `http://127.0.0.1:${PORT}`,
+  `http://localhost:${PORT}`,
+  'http://127.0.0.1:5174',
+  'http://localhost:5174'
+]);
+
+app.addHook('onRequest', async (request, reply) => {
+  if (request.method === 'GET' || request.method === 'HEAD') return;
+  const origin = request.headers.origin;
+  if (!origin || !ALLOWED_ORIGINS.has(origin)) {
+    return reply.code(403).send({ error: 'Origine non autorisée.' });
+  }
+});
+
 app.get('/api/status', async request => {
   const repositories = await loadRepositories();
   const refreshRemote = request.query?.remote === '1';
